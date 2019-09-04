@@ -1,4 +1,4 @@
-// Package cforigin configures an http.Server to only accept requests from Cloudflare.
+// Package origin configures an http.Server to only accept requests from Cloudflare.
 //
 // It can filter IPs according to: https://www.cloudflare.com/ips/
 //
@@ -8,7 +8,7 @@
 //
 // Usage:
 //	func main() {
-//		server, err := cforigin.NewServer("cert.pem", "key.pem", "origin-pull-ca.pem", true)
+//		server, err := origin.NewServer("cert.pem", "key.pem", "origin-pull-ca.pem", true)
 //		if err != nil {
 //			log.Fatal(err)
 //		}
@@ -18,7 +18,7 @@
 //		})
 //		log.Fatal(server.ListenAndServeTLS("", ""))
 //	}
-package cforigin
+package origin
 
 import (
 	"bufio"
