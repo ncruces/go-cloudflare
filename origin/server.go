@@ -73,7 +73,7 @@ func NewServer(certFile, keyFile, pullCAFile string, filterIPs bool) (*http.Serv
 // At least one server certificate must be provided.
 // The origin pull CA certificate is optional.
 func NewServerWithCerts(filterIPs bool, pullCA *x509.CertPool, cert ...tls.Certificate) *http.Server {
-	config := &tls.Config{MinVersion: tls.VersionTLS12}
+	config := &tls.Config{MinVersion: tls.VersionTLS13}
 
 	// validate client IP
 	if filterIPs {
