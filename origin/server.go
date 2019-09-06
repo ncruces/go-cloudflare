@@ -1,10 +1,14 @@
-// Package origin configures an http.Server to only accept requests from Cloudflare.
+// Package origin configures an http.Server to only accept legitimate TLS requests from Cloudflare.
 //
-// It can filter IPs according to: https://www.cloudflare.com/ips/
+// The server will only accept SNI requests matching one of the provided certificates.
+// It can also be configured to only accept requests from Cloudflare IP ranges,
+// and to authenticate origin pulls.
 //
-// It can implement "authenticated origin pulls": https://support.cloudflare.com/hc/en-us/articles/204899617-Authenticated-Origin-Pulls
+// If the above checks fail, TLS handshake fails without leaking server certificates.
 //
-// It doesn't leak the server's certificate if the above checks fail.
+// See:
+//   https://www.cloudflare.com/ips/
+//   https://origin-pull.cloudflare.com/
 //
 // Usage:
 //	func main() {
@@ -42,8 +46,7 @@ var (
 // NewServer creates a Cloudflare origin http.Server.
 //
 // Filenames containing a certificate and matching private key for the server must be provided.
-//
-// To implement "authenticated origin pulls", provide the filename to the origin pull CA's certificate.
+// The filename to the origin pull CA certificate is optional.
 func NewServer(certFile, keyFile, pullCAFile string, filterIPs bool) (*http.Server, error) {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
@@ -67,9 +70,8 @@ func NewServer(certFile, keyFile, pullCAFile string, filterIPs bool) (*http.Serv
 
 // NewServerWithCerts creates a Cloudflare origin http.Server from loaded certificates.
 //
-// To implement "authenticated origin pulls", provide the origin pull CA's certificate.
-//
 // At least one server certificate must be provided.
+// The origin pull CA certificate is optional.
 func NewServerWithCerts(filterIPs bool, pullCA *x509.CertPool, cert ...tls.Certificate) *http.Server {
 	config := &tls.Config{MinVersion: tls.VersionTLS12}
 
@@ -92,7 +94,7 @@ func NewServerWithCerts(filterIPs bool, pullCA *x509.CertPool, cert ...tls.Certi
 	// default port
 	return &http.Server{
 		TLSConfig: config,
-		Addr:      ":443",
+		Addr:      ":https",
 	}
 }
 

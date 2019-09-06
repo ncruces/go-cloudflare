@@ -1,3 +1,21 @@
+// Package dyndns dynamically updates A/AAAA DNS records on Cloudflare.
+//
+// Unlike other packages, this is intended to be used as a library (e.g. alongside an http.Server).
+// It uses Cloudflare's 1.1.1.1 to get your public IP,
+// and API Tokens for authentication.
+//
+// See:
+//   https://blog.cloudflare.com/api-tokens-general-availability/
+//
+// Usage:
+//	func main() {
+//		go dyndns.SyncDNS("example.com", "[Zone ID]", "[Edit zone DNS Token]", time.Minute)
+//
+//		http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+//			io.WriteString(w, "Hello, world!\n")
+//		})
+//		log.Fatal(http.ListenAndServe(":http", nil))
+//	}
 package dyndns
 
 import (
@@ -11,6 +29,7 @@ import (
 	"github.com/cloudflare/cloudflare-go"
 )
 
+// UpdateDNS updates A/AAAA DNS records to your current public IP.
 func UpdateDNS(domain, zone, token string) error {
 	api, err := cloudflare.NewWithAPIToken(token)
 	if err != nil {
@@ -26,7 +45,8 @@ func UpdateDNS(domain, zone, token string) error {
 	return up.updateRecords()
 }
 
-func SyncDNS(domain, zone, token string, update time.Duration) error {
+// SyncDNS enters a loop keeping A/AAAA DNS records up to date with your current public IP.
+func SyncDNS(domain, zone, token string, polling time.Duration) error {
 	api, err := cloudflare.NewWithAPIToken(token)
 	if err != nil {
 		return err
@@ -42,7 +62,7 @@ func SyncDNS(domain, zone, token string, update time.Duration) error {
 		if err := up.updateRecords(); err != nil {
 			log.Println("failed to update DNS records:", err)
 		}
-		time.Sleep(update)
+		time.Sleep(polling)
 	}
 }
 
@@ -119,10 +139,12 @@ func (up *updater) updateRecord(record, content string) error {
 	return err
 }
 
+// PublicIPv4 gets your public v4 IP.
 func PublicIPv4() (string, error) {
 	return publicIP("1.1.1.1", "1.0.0.1")
 }
 
+// PublicIPv6 gets your public v6 IP.
 func PublicIPv6() (string, error) {
 	return publicIP("[2606:4700:4700::1111]", "[2606:4700:4700::1001]")
 }
