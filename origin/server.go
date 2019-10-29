@@ -34,11 +34,12 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 var (
-	ips     []*net.IPNet
+	ips     atomic.Value
 	mutex   sync.Mutex
 	refresh time.Time
 )
@@ -109,24 +110,23 @@ func checkIP(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		ip = addr.IP
 	}
 
+	ips, _ := ips.Load().([]net.IPNet)
 	for _, ipnet := range ips {
 		if ipnet.Contains(ip) {
 			return nil, nil
 		}
 	}
 	// update on failure: maybe it's a new IP?
-	if updateIPs() {
-		for _, ipnet := range ips {
-			if ipnet.Contains(ip) {
-				return nil, nil
-			}
+	for _, ipnet := range updateIPs() {
+		if ipnet.Contains(ip) {
+			return nil, nil
 		}
 	}
 
 	return nil, errors.New("not a Cloudflare IP")
 }
 
-func updateIPs() bool {
+func updateIPs() []net.IPNet {
 	// shared state
 	mutex.Lock()
 	defer mutex.Unlock()
@@ -137,29 +137,33 @@ func updateIPs() bool {
 
 		ipv4, err := loadIPs("https://www.cloudflare.com/ips-v4")
 		if err != nil {
-			if ips == nil {
+			if ips.Load() == nil {
 				// fatal because we've never done it
 				log.Fatalln("failed to fecth Cloudflare IPv4s:", err)
 			}
 			log.Println("failed to update Cloudflare IPv4s:", err)
-			return false
+			return nil
 		}
 		ipv6, err := loadIPs("https://www.cloudflare.com/ips-v6")
 		if err != nil {
-			if ips == nil {
+			if ips.Load() == nil {
 				// fatal because we've never done it
 				log.Fatalln("failed to fecth Cloudflare IPv6s:", err)
 			}
 			log.Println("failed to update Cloudflare IPv6s:", err)
-			return false
+			return nil
 		}
-		ips = append(ipv4, ipv6...)
-		return true
+
+		ip := append(ipv4, ipv6...)
+		ips.Store(ip)
+		return ip
 	}
-	return false
+
+	// another routine might've updated it
+	return ips.Load().([]net.IPNet)
 }
 
-func loadIPs(url string) ([]*net.IPNet, error) {
+func loadIPs(url string) ([]net.IPNet, error) {
 	res, err := http.Get(url)
 	if err != nil {
 		return nil, err
@@ -170,14 +174,14 @@ func loadIPs(url string) ([]*net.IPNet, error) {
 		return nil, errors.New(http.StatusText(res.StatusCode))
 	}
 
-	var ips []*net.IPNet
+	var ips []net.IPNet
 	scanner := bufio.NewScanner(res.Body)
 	for scanner.Scan() {
 		_, n, err := net.ParseCIDR(scanner.Text())
 		if err != nil {
 			return nil, err
 		}
-		ips = append(ips, n)
+		ips = append(ips, *n)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
