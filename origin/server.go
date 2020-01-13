@@ -88,7 +88,7 @@ func NewServerWithCerts(filterIPs bool, pullCA *x509.CertPool, cert ...tls.Certi
 	}
 
 	// prepend invalid certificate so we don't leak first certificate for no/unknown SNI
-	invalidCert := tls.Certificate{Certificate: [][]byte{[]byte{}}}
+	invalidCert := tls.Certificate{Certificate: [][]byte{{}}}
 	config.Certificates = append([]tls.Certificate{invalidCert}, cert...)
 	config.BuildNameToCertificate()
 
