@@ -54,6 +54,11 @@ func NewServer(certFile, keyFile, pullCAFile string, filterIPs bool) (*http.Serv
 		return nil, err
 	}
 
+	cert.Leaf, err = x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return nil, err
+	}
+
 	var pool *x509.CertPool
 
 	if pullCAFile != "" {
@@ -71,14 +76,34 @@ func NewServer(certFile, keyFile, pullCAFile string, filterIPs bool) (*http.Serv
 
 // NewServerWithCerts creates a Cloudflare origin http.Server from loaded certificates.
 //
-// At least one server certificate must be provided.
 // The origin pull CA certificate is optional.
+// At least one server certificate must be provided.
 func NewServerWithCerts(filterIPs bool, pullCA *x509.CertPool, cert ...tls.Certificate) *http.Server {
 	config := &tls.Config{MinVersion: tls.VersionTLS13}
 
-	// validate client IP
-	if filterIPs {
-		config.GetCertificate = checkIP
+	config.GetCertificate = func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		// find certificate matching SNI
+		var found *tls.Certificate
+
+		if len(info.ServerName) > 0 {
+			for i := range cert {
+				if err := info.SupportsCertificate(&cert[i]); err == nil {
+					found = &cert[i]
+					break
+				}
+			}
+		}
+
+		if found == nil {
+			return nil, errors.New("mismatched server name")
+		}
+
+		// validate client IP
+		if filterIPs && !checkIP(info) {
+			return nil, errors.New("not a Cloudflare IP")
+		}
+
+		return found, nil
 	}
 
 	// validate client certificate against origin pull certificate
@@ -87,11 +112,6 @@ func NewServerWithCerts(filterIPs bool, pullCA *x509.CertPool, cert ...tls.Certi
 		config.ClientAuth = tls.RequireAndVerifyClientCert
 	}
 
-	// prepend invalid certificate so we don't leak first certificate for no/unknown SNI
-	invalidCert := tls.Certificate{Certificate: [][]byte{{}}}
-	config.Certificates = append([]tls.Certificate{invalidCert}, cert...)
-	config.BuildNameToCertificate()
-
 	// default port
 	return &http.Server{
 		TLSConfig: config,
@@ -99,7 +119,7 @@ func NewServerWithCerts(filterIPs bool, pullCA *x509.CertPool, cert ...tls.Certi
 	}
 }
 
-func checkIP(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+func checkIP(info *tls.ClientHelloInfo) bool {
 	var ip net.IP
 	switch addr := info.Conn.RemoteAddr().(type) {
 	case *net.TCPAddr:
@@ -113,17 +133,17 @@ func checkIP(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	ips, _ := ips.Load().([]net.IPNet)
 	for _, ipnet := range ips {
 		if ipnet.Contains(ip) {
-			return nil, nil
+			return true
 		}
 	}
 	// update on failure: maybe it's a new IP?
 	for _, ipnet := range updateIPs() {
 		if ipnet.Contains(ip) {
-			return nil, nil
+			return true
 		}
 	}
 
-	return nil, errors.New("not a Cloudflare IP")
+	return false
 }
 
 func updateIPs() []net.IPNet {
