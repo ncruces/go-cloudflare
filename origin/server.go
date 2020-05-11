@@ -38,6 +38,16 @@ import (
 	"time"
 )
 
+type constError string
+
+func (e constError) Error() string { return string(e) }
+
+const (
+	errNotCloudflare        constError = "not a Cloudflare IP"
+	errMissingServerName    constError = "missing server name"
+	errMismatchedServerName constError = "mismatched server name"
+)
+
 var (
 	ips     atomic.Value
 	mutex   sync.Mutex
@@ -82,25 +92,28 @@ func NewServerWithCerts(filterIPs bool, pullCA *x509.CertPool, cert ...tls.Certi
 	config := &tls.Config{MinVersion: tls.VersionTLS13}
 
 	config.GetCertificate = func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-		// find certificate matching SNI
+		// force SNI
+		if info.ServerName == "" {
+			return nil, errMissingServerName
+		}
+
+		// find matching certificate
 		var found *tls.Certificate
 
-		if len(info.ServerName) > 0 {
-			for i := range cert {
-				if err := info.SupportsCertificate(&cert[i]); err == nil {
-					found = &cert[i]
-					break
-				}
+		for i := range cert {
+			if err := info.SupportsCertificate(&cert[i]); err == nil {
+				found = &cert[i]
+				break
 			}
 		}
 
 		if found == nil {
-			return nil, errors.New("mismatched server name")
+			return nil, errMismatchedServerName
 		}
 
 		// validate client IP
 		if filterIPs && !checkIP(info) {
-			return nil, errors.New("not a Cloudflare IP")
+			return nil, errNotCloudflare
 		}
 
 		return found, nil
