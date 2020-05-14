@@ -89,10 +89,11 @@ func NewServer(certFile, keyFile, pullCAFile string, filterIPs bool) (*http.Serv
 // The origin pull CA certificate is optional.
 // At least one server certificate must be provided.
 func NewServerWithCerts(filterIPs bool, pullCA *x509.CertPool, cert ...tls.Certificate) *http.Server {
+	// require TLS 1.3
 	config := &tls.Config{MinVersion: tls.VersionTLS13}
 
 	config.GetCertificate = func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-		// force SNI
+		// require SNI
 		if info.ServerName == "" {
 			return nil, errMissingServerName
 		}
@@ -125,10 +126,13 @@ func NewServerWithCerts(filterIPs bool, pullCA *x509.CertPool, cert ...tls.Certi
 		config.ClientAuth = tls.RequireAndVerifyClientCert
 	}
 
-	// default port
+	// default port, reasonably large default timeouts
 	return &http.Server{
-		TLSConfig: config,
-		Addr:      ":https",
+		TLSConfig:    config,
+		Addr:         ":https",
+		ReadTimeout:  1 * time.Minute,
+		WriteTimeout: 1 * time.Minute,
+		IdleTimeout:  10 * time.Minute,
 	}
 }
 
@@ -171,7 +175,7 @@ func updateIPs() []net.IPNet {
 		ipv4, err := loadIPs("https://www.cloudflare.com/ips-v4")
 		if err != nil {
 			if ips.Load() == nil {
-				// fatal because we've never done it
+				// fatal because it's our first time doing this
 				log.Fatalln("failed to fecth Cloudflare IPv4s:", err)
 			}
 			log.Println("failed to update Cloudflare IPv4s:", err)
@@ -180,7 +184,7 @@ func updateIPs() []net.IPNet {
 		ipv6, err := loadIPs("https://www.cloudflare.com/ips-v6")
 		if err != nil {
 			if ips.Load() == nil {
-				// fatal because we've never done it
+				// fatal because it's our first time doing this
 				log.Fatalln("failed to fecth Cloudflare IPv6s:", err)
 			}
 			log.Println("failed to update Cloudflare IPv6s:", err)
