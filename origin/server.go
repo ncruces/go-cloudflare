@@ -128,12 +128,13 @@ func NewServerWithCerts(filterIPs bool, pullCA *x509.CertPool, cert ...tls.Certi
 
 	// default port, reasonably large default timeouts
 	return &http.Server{
-		TLSConfig:    config,
-		Addr:         ":https",
-		ReadTimeout:  1 * time.Minute,
-		WriteTimeout: 1 * time.Minute,
-		IdleTimeout:  10 * time.Minute,
-		Handler:      http.HandlerFunc(serveMux),
+		TLSConfig:         config,
+		Addr:              ":https",
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       1 * time.Minute,
+		WriteTimeout:      1 * time.Minute,
+		IdleTimeout:       10 * time.Minute,
+		Handler:           http.HandlerFunc(serveMux),
 	}
 }
 
