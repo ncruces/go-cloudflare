@@ -133,6 +133,15 @@ func NewServerWithCerts(filterIPs bool, pullCA *x509.CertPool, cert ...tls.Certi
 		ReadTimeout:  1 * time.Minute,
 		WriteTimeout: 1 * time.Minute,
 		IdleTimeout:  10 * time.Minute,
+		Handler:      http.HandlerFunc(serveMux),
+	}
+}
+
+func serveMux(w http.ResponseWriter, r *http.Request) {
+	if r.Host == r.TLS.ServerName {
+		http.DefaultServeMux.ServeHTTP(w, r)
+	} else {
+		w.WriteHeader(http.StatusForbidden)
 	}
 }
 
