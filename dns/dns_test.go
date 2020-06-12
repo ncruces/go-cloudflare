@@ -1,14 +1,12 @@
 package dns
 
 import (
-	"context"
+	"net"
 	"testing"
 )
 
-func TestResolveTLS(t *testing.T) {
-	resolver := NewTLSResolver()
-	ips, err := resolver.LookupIPAddr(context.TODO(), "one.one.one.one")
-	if err != nil {
+func TestDNS(t *testing.T) {
+	if ips, err := net.LookupIP("one.one.one.one"); err != nil {
 		t.Error(err)
 	} else {
 		t.Log(ips)
