@@ -26,6 +26,7 @@ package origin
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -215,7 +216,15 @@ func updateIPs() []net.IPNet {
 }
 
 func loadIPs(url string) ([]net.IPNet, error) {
-	res, err := http.Get(url)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

@@ -21,6 +21,7 @@ package dyndns
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -31,33 +32,19 @@ import (
 
 // UpdateDNS updates A/AAAA DNS records to your current public IP.
 func UpdateDNS(domain, zone, token string) error {
-	api, err := cloudflare.NewWithAPIToken(token)
+	up, err := newUpdater(domain, zone, token)
 	if err != nil {
 		return err
 	}
-
-	up := updater{api: api, zone: zone}
-
-	if err := up.loadRecords(domain); err != nil {
-		return err
-	}
-
 	return up.updateRecords()
 }
 
 // SyncDNS enters a loop keeping A/AAAA DNS records up to date with your current public IP.
 func SyncDNS(domain, zone, token string, polling time.Duration) error {
-	api, err := cloudflare.NewWithAPIToken(token)
+	up, err := newUpdater(domain, zone, token)
 	if err != nil {
 		return err
 	}
-
-	up := updater{api: api, zone: zone}
-
-	if err := up.loadRecords(domain); err != nil {
-		return err
-	}
-
 	for {
 		if err := up.updateRecords(); err != nil {
 			log.Println("failed to update DNS records:", err)
@@ -66,11 +53,28 @@ func SyncDNS(domain, zone, token string, polling time.Duration) error {
 	}
 }
 
+var defaultClient = &http.Client{Timeout: 5 * time.Second}
+
 type updater struct {
 	api        *cloudflare.API
 	zone       string
 	a, aaaa    string
 	ipv4, ipv6 string
+}
+
+func newUpdater(domain, zone, token string) (*updater, error) {
+	api, err := cloudflare.NewWithAPIToken(token, cloudflare.HTTPClient(defaultClient))
+	if err != nil {
+		return nil, err
+	}
+
+	up := updater{api: api, zone: zone}
+
+	if err := up.loadRecords(domain); err != nil {
+		return nil, err
+	}
+
+	return &up, nil
 }
 
 func (up *updater) loadRecords(domain string) error {
@@ -150,10 +154,23 @@ func PublicIPv6() (string, error) {
 }
 
 func publicIP(primary, secondary string) (string, error) {
-	res, err := http.Get("https://" + primary + "/cdn-cgi/trace")
+	ip, err := tryGetIP("https://" + primary + "/cdn-cgi/trace")
 	if err != nil {
-		res, err = http.Get("https://" + secondary + "/cdn-cgi/trace")
+		return tryGetIP("https://" + secondary + "/cdn-cgi/trace")
 	}
+	return ip, err
+}
+
+func tryGetIP(url string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	res, err := defaultClient.Do(req)
 	if err != nil {
 		return "", err
 	}
