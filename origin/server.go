@@ -139,7 +139,11 @@ func NewServerWithCerts(filterIPs bool, pullCA *x509.CertPool, cert ...tls.Certi
 }
 
 func serveMux(w http.ResponseWriter, r *http.Request) {
-	if r.Host == r.TLS.ServerName {
+	host, _, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		host = r.Host
+	}
+	if host == r.TLS.ServerName {
 		http.DefaultServeMux.ServeHTTP(w, r)
 	} else {
 		w.WriteHeader(http.StatusForbidden)
