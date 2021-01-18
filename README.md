@@ -1,3 +1,3 @@
 # Cloudflare utilities in Go
 
-[![GoDoc](https://godoc.org/github.com/ncruces/go-cloudflare?status.svg)](https://godoc.org/github.com/ncruces/go-cloudflare)
+[![GoDoc](https://pkg.go.dev/badge/image)](https://pkg.go.dev/github.com/ncruces/go-cloudflare)

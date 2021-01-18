@@ -1,3 +1,3 @@
 # A Cloudflare origin http.Server
 
-[![GoDoc](https://godoc.org/github.com/ncruces/go-cloudflare/origin?status.svg)](https://godoc.org/github.com/ncruces/go-cloudflare/origin)
+[![GoDoc](https://pkg.go.dev/badge/image)](https://pkg.go.dev/github.com/ncruces/go-cloudflare/origin)

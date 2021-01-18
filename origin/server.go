@@ -1,10 +1,11 @@
-// Package origin configures an http.Server to only accept legitimate TLS requests from Cloudflare.
+// Package origin configures an http.Server to only accept legitimate requests from Cloudflare.
 //
-// The server will only accept SNI requests matching one of the provided certificates.
-// It can also be configured to only accept requests from Cloudflare IP ranges,
-// and to authenticate origin pulls.
+// The server will only accept TLS 1.3 SNI requests matching one of the provided certificates,
+// and authenticates origin pulls using mTLS.
 //
-// If the above checks fail, TLS handshake fails without leaking server certificates.
+// A net.Listener that only accepts connections from Cloudflare IP ranges can also be used.
+//
+// If any of the above checks fail, TLS handshake fails without leaking server certificates.
 //
 // See:
 //   https://www.cloudflare.com/ips/
@@ -12,15 +13,21 @@
 //
 // Usage:
 //	func main() {
-//		server, err := origin.NewServer("cert.pem", "key.pem", "origin-pull-ca.pem", true)
+// 		server, err := origin.NewServer("cert.pem", "key.pem", "origin-pull-ca.pem")
 //		if err != nil {
 //			log.Fatal(err)
 //		}
 //
+//		ln, err := origin.Listen(":https")
+//		if err != nil {
+//			log.Fatal(err)
+//		}
+//		defer ln.Close()
+//
 //		http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-//			io.WriteString(w, "Hello, TLS!\n")
+//			io.WriteString(w, "Hello, Cloudflare!\n")
 //		})
-//		log.Fatal(server.ListenAndServeTLS("", ""))
+//		log.Fatal(server.ServeTLS(ln, "", ""))
 //	}
 package origin
 
@@ -55,11 +62,37 @@ var (
 	refresh time.Time
 )
 
+// Listen accepts TCP connections from Cloudflare IP ranges.
+func Listen(address string) (net.Listener, error) {
+	ln, err := net.Listen("tcp", address)
+	if err != nil {
+		return nil, err
+	}
+	go updateIPs()
+	return listener{ln}, nil
+}
+
+type listener struct {
+	net.Listener
+}
+
+func (ln listener) Accept() (net.Conn, error) {
+	conn, err := ln.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	if !checkIP(conn) {
+		conn.Close()
+		return nil, errNotCloudflare
+	}
+	return conn, nil
+}
+
 // NewServer creates a Cloudflare origin http.Server.
 //
 // Filenames containing a certificate and matching private key for the server must be provided.
 // The filename to the origin pull CA certificate is optional.
-func NewServer(certFile, keyFile, pullCAFile string, filterIPs bool) (*http.Server, error) {
+func NewServer(certFile, keyFile, pullCAFile string) (*http.Server, error) {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		return nil, err
@@ -82,14 +115,14 @@ func NewServer(certFile, keyFile, pullCAFile string, filterIPs bool) (*http.Serv
 		pool.AppendCertsFromPEM(pull)
 	}
 
-	return NewServerWithCerts(filterIPs, pool, cert), nil
+	return NewServerWithCerts(pool, cert), nil
 }
 
 // NewServerWithCerts creates a Cloudflare origin http.Server from loaded certificates.
 //
 // The origin pull CA certificate is optional.
 // At least one server certificate must be provided.
-func NewServerWithCerts(filterIPs bool, pullCA *x509.CertPool, cert ...tls.Certificate) *http.Server {
+func NewServerWithCerts(pullCA *x509.CertPool, cert ...tls.Certificate) *http.Server {
 	// require TLS 1.3
 	config := &tls.Config{MinVersion: tls.VersionTLS13}
 
@@ -100,25 +133,13 @@ func NewServerWithCerts(filterIPs bool, pullCA *x509.CertPool, cert ...tls.Certi
 		}
 
 		// find matching certificate
-		var found *tls.Certificate
-
 		for i := range cert {
 			if err := info.SupportsCertificate(&cert[i]); err == nil {
-				found = &cert[i]
-				break
+				return &cert[i], nil
 			}
 		}
 
-		if found == nil {
-			return nil, errMismatchedServerName
-		}
-
-		// validate client IP
-		if filterIPs && !checkIP(info) {
-			return nil, errNotCloudflare
-		}
-
-		return found, nil
+		return nil, errMismatchedServerName
 	}
 
 	// validate client certificate against origin pull certificate
@@ -130,7 +151,6 @@ func NewServerWithCerts(filterIPs bool, pullCA *x509.CertPool, cert ...tls.Certi
 	// default port, reasonably large default timeouts
 	return &http.Server{
 		TLSConfig:         config,
-		Addr:              ":https",
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       1 * time.Minute,
 		WriteTimeout:      1 * time.Minute,
@@ -151,9 +171,9 @@ func serveMux(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func checkIP(info *tls.ClientHelloInfo) bool {
+func checkIP(conn net.Conn) bool {
 	var ip net.IP
-	switch addr := info.Conn.RemoteAddr().(type) {
+	switch addr := conn.RemoteAddr().(type) {
 	case *net.TCPAddr:
 		ip = addr.IP
 	case *net.UDPAddr:
@@ -231,7 +251,7 @@ func loadIPs(url string) ([]net.IPNet, error) {
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, errors.New(http.StatusText(res.StatusCode))
+		return nil, errors.New(res.Status)
 	}
 
 	var ips []net.IPNet

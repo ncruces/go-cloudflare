@@ -177,14 +177,14 @@ func tryGetIP(url string) (string, error) {
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return "", errors.New(http.StatusText(res.StatusCode))
+		return "", errors.New(res.Status)
 	}
 
 	scanner := bufio.NewScanner(res.Body)
 	for scanner.Scan() {
 		const prefix = "ip="
 		if bytes.HasPrefix(scanner.Bytes(), []byte(prefix)) {
-			return string(scanner.Bytes()[len(prefix):]), nil
+			return scanner.Text()[len(prefix):], nil
 		}
 	}
 	if err := scanner.Err(); err != nil {
