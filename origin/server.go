@@ -72,21 +72,35 @@ func Listen(address string) (net.Listener, error) {
 	return listener{ln}, nil
 }
 
+var _ net.Listener = listener{}
+var _ net.Conn = conn{}
+
 type listener struct {
 	net.Listener
 }
 
 func (ln listener) Accept() (net.Conn, error) {
-	conn, err := ln.Listener.Accept()
+	c, err := ln.Listener.Accept()
 	if err != nil {
 		return nil, err
 	}
-	if !checkIP(conn) {
-		conn.Close()
-		return nil, errNotCloudflare
+	if !checkIP(c) {
+		c.Close()
+		return conn{}, nil
 	}
-	return conn, nil
+	return c, nil
 }
+
+type conn struct{}
+
+func (c conn) Read(b []byte) (n int, err error)   { return 0, errNotCloudflare }
+func (c conn) Write(b []byte) (n int, err error)  { return 0, errNotCloudflare }
+func (c conn) Close() error                       { return errNotCloudflare }
+func (c conn) SetDeadline(t time.Time) error      { return errNotCloudflare }
+func (c conn) SetReadDeadline(t time.Time) error  { return errNotCloudflare }
+func (c conn) SetWriteDeadline(t time.Time) error { return errNotCloudflare }
+func (c conn) LocalAddr() net.Addr                { return nil }
+func (c conn) RemoteAddr() net.Addr               { return nil }
 
 // NewServer creates a Cloudflare origin http.Server.
 //
