@@ -86,12 +86,14 @@ func (ln listener) Accept() (net.Conn, error) {
 	}
 	if !checkIP(c) {
 		c.Close()
-		return conn{}, nil
+		return conn{c}, nil
 	}
 	return c, nil
 }
 
-type conn struct{}
+type conn struct {
+	net.Conn
+}
 
 func (c conn) Read(b []byte) (n int, err error)   { return 0, errNotCloudflare }
 func (c conn) Write(b []byte) (n int, err error)  { return 0, errNotCloudflare }
@@ -99,8 +101,8 @@ func (c conn) Close() error                       { return errNotCloudflare }
 func (c conn) SetDeadline(t time.Time) error      { return errNotCloudflare }
 func (c conn) SetReadDeadline(t time.Time) error  { return errNotCloudflare }
 func (c conn) SetWriteDeadline(t time.Time) error { return errNotCloudflare }
-func (c conn) LocalAddr() net.Addr                { return nil }
-func (c conn) RemoteAddr() net.Addr               { return nil }
+func (c conn) LocalAddr() net.Addr                { return c.Conn.LocalAddr() }
+func (c conn) RemoteAddr() net.Addr               { return c.Conn.RemoteAddr() }
 
 // NewServer creates a Cloudflare origin http.Server.
 //
