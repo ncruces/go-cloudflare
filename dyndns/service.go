@@ -135,12 +135,9 @@ func (up *updater) updateRecords() (err error) {
 }
 
 func (up *updater) updateRecord(record, content string) error {
-	rec, err := up.api.DNSRecord(up.zone, record)
-	if err == nil && rec.Content != content {
-		rec.Content = content
-		_, err = up.api.Raw("PATCH", "/zones/"+up.zone+"/dns_records/"+record, rec)
-	}
-	return err
+	return up.api.UpdateDNSRecord(up.zone, record, cloudflare.DNSRecord{
+		Content: content,
+	})
 }
 
 // PublicIPv4 gets your public v4 IP.
