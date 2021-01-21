@@ -1,11 +1,11 @@
 // Package origin configures an http.Server to only accept legitimate requests from Cloudflare.
 //
 // The server will only accept TLS 1.3 SNI requests matching one of the provided certificates,
-// and authenticates origin pulls using mTLS.
+// and it can authenticate origin pulls using mTLS.
+//
+// When the above checks fail, the TLS handshake fails without leaking server certificates.
 //
 // A net.Listener that only accepts connections from Cloudflare IP ranges can also be used.
-//
-// If any of the above checks fail, TLS handshake fails without leaking server certificates.
 //
 // See:
 //   https://www.cloudflare.com/ips/
@@ -180,12 +180,20 @@ func NewServerWithCerts(pullCA *x509.CertPool, cert ...tls.Certificate) *http.Se
 	}
 }
 
-func serveMux(w http.ResponseWriter, r *http.Request) {
+// MatchServerNameHost checks if SNI matches the Host header for a TLS http.Request.
+func MatchHostServerName(r *http.Request) bool {
+	if r.TLS == nil {
+		return true
+	}
 	host, _, err := net.SplitHostPort(r.Host)
 	if err != nil {
 		host = r.Host
 	}
-	if host == r.TLS.ServerName {
+	return r.TLS.ServerName == host
+}
+
+func serveMux(w http.ResponseWriter, r *http.Request) {
+	if MatchHostServerName(r) {
 		http.DefaultServeMux.ServeHTTP(w, r)
 	} else {
 		w.WriteHeader(http.StatusForbidden)
