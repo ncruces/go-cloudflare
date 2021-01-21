@@ -18,7 +18,7 @@
 //			log.Fatal(err)
 //		}
 //
-//		ln, err := origin.Listen(":https")
+//		ln, err := origin.Listen("tcp", ":https")
 //		if err != nil {
 //			log.Fatal(err)
 //		}
@@ -41,6 +41,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -62,9 +63,13 @@ var (
 	refresh time.Time
 )
 
-// Listen accepts TCP connections from Cloudflare IP ranges.
-func Listen(address string) (net.Listener, error) {
-	ln, err := net.Listen("tcp", address)
+// Listen only accepts TCP connections from Cloudflare IP ranges.
+func Listen(network, address string) (net.Listener, error) {
+	if !strings.HasPrefix(network, "tcp") {
+		return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: nil, Err: &net.AddrError{Err: "unexpected address type", Addr: address}}
+	}
+
+	ln, err := net.Listen(network, address)
 	if err != nil {
 		return nil, err
 	}
