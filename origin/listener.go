@@ -35,6 +35,11 @@ func Listen(network, address string) (net.Listener, error) {
 	return listener{ln}, nil
 }
 
+// NewListener returns a listener that only accepts TCP connections from Cloudflare IP ranges.
+func NewListener(ln net.Listener) net.Listener {
+	return listener{ln}
+}
+
 var _ net.Listener = listener{}
 var _ net.Conn = conn{}
 
@@ -47,7 +52,7 @@ func (ln listener) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !checkIP(c) {
+	if !checkIP(c.RemoteAddr()) {
 		c.Close()
 		return conn{c}, nil
 	}
@@ -67,9 +72,9 @@ func (c conn) SetWriteDeadline(t time.Time) error { return errNotCloudflare }
 func (c conn) LocalAddr() net.Addr                { return c.Conn.LocalAddr() }
 func (c conn) RemoteAddr() net.Addr               { return c.Conn.RemoteAddr() }
 
-func checkIP(conn net.Conn) bool {
+func checkIP(addr net.Addr) bool {
 	var ip net.IP
-	switch addr := conn.RemoteAddr().(type) {
+	switch addr := addr.(type) {
 	case *net.TCPAddr:
 		ip = addr.IP
 	case *net.UDPAddr:

@@ -1,3 +1,4 @@
+// Package acmecf solves DNS-01 challenges for acmez using Cloudflare.
 package acmecf
 
 import (
