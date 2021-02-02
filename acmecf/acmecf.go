@@ -3,8 +3,10 @@ package acmecf
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"net"
+	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/cloudflare/cloudflare-go"
@@ -43,12 +45,19 @@ func (s *dns01Solver) Present(ctx context.Context, chal acme.Challenge) error {
 		return errors.New("unexpected challenge")
 	}
 
-	res, err := s.api.CreateDNSRecord(s.zone, cloudflare.DNSRecord{
+	rec := cloudflare.DNSRecord{
 		Type:    "TXT",
 		Name:    chal.DNS01TXTRecordName(),
 		Content: chal.DNS01KeyAuthorization(),
-	})
+	}
+
+	res, err := s.api.CreateDNSRecord(s.zone, rec)
 	if err != nil {
+		res, _ := s.api.DNSRecords(s.zone, rec)
+		if len(res) == 1 {
+			s.record = res[0].ID
+			return nil
+		}
 		return err
 	}
 
@@ -61,21 +70,17 @@ func (s *dns01Solver) Wait(ctx context.Context, challenge acme.Challenge) error 
 		return nil
 	}
 
-	for start := time.Now(); time.Since(start) < time.Minute; {
+	var backoff = time.Second
+	for start := time.Now(); time.Since(start) < 5*time.Minute; backoff *= 2 {
 		select {
-		case <-time.After(time.Second):
+		case <-time.After(backoff):
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 
-		recs, err := net.LookupTXT(challenge.DNS01TXTRecordName())
-
-		var derr *net.DNSError
-		if errors.As(err, &derr) && (derr.IsNotFound || derr.IsTemporary || derr.IsTimeout) {
-			continue
-		}
+		recs, err := lookupTXT(ctx, challenge.DNS01TXTRecordName())
 		if err != nil {
-			return err
+			continue
 		}
 
 		for _, rec := range recs {
@@ -92,4 +97,44 @@ func (s *dns01Solver) CleanUp(ctx context.Context, chal acme.Challenge) error {
 		return nil
 	}
 	return s.api.DeleteDNSRecord(s.zone, s.record)
+}
+
+func lookupTXT(ctx context.Context, domain string) ([]string, error) {
+	url := "https://dns.google/resolve?type=TXT&name=" + url.QueryEscape(domain)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return nil, errors.New(res.Status)
+	}
+
+	var dns struct {
+		Answer []struct {
+			Data string
+		}
+	}
+	err = json.NewDecoder(res.Body).Decode(&dns)
+	if err != nil {
+		return nil, err
+	}
+
+	var ret []string
+	for _, answer := range dns.Answer {
+		if len := len(answer.Data); len > 2 {
+			ret = append(ret, answer.Data[1:len-1])
+		}
+	}
+	if len(ret) == 0 {
+		return nil, errors.New(http.StatusText(http.StatusNotFound))
+	}
+	return ret, nil
 }
