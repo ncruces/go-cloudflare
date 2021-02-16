@@ -65,12 +65,10 @@ type conn struct {
 
 func (c conn) Read(b []byte) (n int, err error)   { return 0, errNotCloudflare }
 func (c conn) Write(b []byte) (n int, err error)  { return 0, errNotCloudflare }
-func (c conn) Close() error                       { return errNotCloudflare }
 func (c conn) SetDeadline(t time.Time) error      { return errNotCloudflare }
 func (c conn) SetReadDeadline(t time.Time) error  { return errNotCloudflare }
 func (c conn) SetWriteDeadline(t time.Time) error { return errNotCloudflare }
-func (c conn) LocalAddr() net.Addr                { return c.Conn.LocalAddr() }
-func (c conn) RemoteAddr() net.Addr               { return c.Conn.RemoteAddr() }
+func (c conn) Close() error                       { return nil }
 
 func checkIP(addr net.Addr) bool {
 	var ip net.IP
