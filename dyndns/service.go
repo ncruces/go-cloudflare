@@ -5,9 +5,11 @@
 // and API Tokens for authentication.
 //
 // See:
-//   https://blog.cloudflare.com/api-tokens-general-availability/
+//
+//	https://blog.cloudflare.com/api-tokens-general-availability/
 //
 // Usage:
+//
 //	func main() {
 //		go dyndns.SyncDNS("example.com", "[Zone ID]", "[Edit zone DNS Token]", time.Minute)
 //
@@ -78,7 +80,9 @@ func newUpdater(domain, zone, token string) (*updater, error) {
 }
 
 func (up *updater) loadRecords(domain string) error {
-	recs, err := up.api.DNSRecords(up.zone, cloudflare.DNSRecord{Name: domain})
+	recs, _, err := up.api.ListDNSRecords(context.Background(),
+		cloudflare.ZoneIdentifier(up.zone),
+		cloudflare.ListDNSRecordsParams{Name: domain})
 	if err != nil {
 		return err
 	}
@@ -135,9 +139,12 @@ func (up *updater) updateRecords() (err error) {
 }
 
 func (up *updater) updateRecord(record, content string) error {
-	return up.api.UpdateDNSRecord(up.zone, record, cloudflare.DNSRecord{
-		Content: content,
-	})
+	return up.api.UpdateDNSRecord(context.Background(),
+		cloudflare.ZoneIdentifier(up.zone),
+		cloudflare.UpdateDNSRecordParams{
+			ID:      record,
+			Content: content,
+		})
 }
 
 // PublicIPv4 gets your public v4 IP.

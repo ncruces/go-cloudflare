@@ -45,15 +45,20 @@ func (s *dns01Solver) Present(ctx context.Context, chal acme.Challenge) error {
 		return errors.New("unexpected challenge")
 	}
 
-	rec := cloudflare.DNSRecord{
+	rec := cloudflare.CreateDNSRecordParams{
 		Type:    "TXT",
 		Name:    chal.DNS01TXTRecordName(),
 		Content: chal.DNS01KeyAuthorization(),
 	}
 
-	res, err := s.api.CreateDNSRecord(s.zone, rec)
+	zone := cloudflare.ZoneIdentifier(s.zone)
+	res, err := s.api.CreateDNSRecord(ctx, zone, rec)
 	if err != nil {
-		res, _ := s.api.DNSRecords(s.zone, rec)
+		res, _, _ := s.api.ListDNSRecords(ctx, zone, cloudflare.ListDNSRecordsParams{
+			Type:    "TXT",
+			Name:    chal.DNS01TXTRecordName(),
+			Content: chal.DNS01KeyAuthorization(),
+		})
 		if len(res) == 1 {
 			s.record = res[0].ID
 			return nil
@@ -96,7 +101,8 @@ func (s *dns01Solver) CleanUp(ctx context.Context, chal acme.Challenge) error {
 	if s.record == "" {
 		return nil
 	}
-	return s.api.DeleteDNSRecord(s.zone, s.record)
+	zone := cloudflare.ZoneIdentifier(s.zone)
+	return s.api.DeleteDNSRecord(ctx, zone, s.record)
 }
 
 func lookupTXT(ctx context.Context, domain string) ([]string, error) {
