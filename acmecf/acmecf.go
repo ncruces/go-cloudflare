@@ -66,7 +66,7 @@ func (s *dns01Solver) Present(ctx context.Context, chal acme.Challenge) error {
 		return err
 	}
 
-	s.record = res.Result.ID
+	s.record = res.ID
 	return nil
 }
 
